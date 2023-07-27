@@ -3,5 +3,5 @@ This repository represents first look at Physio project together with RealSense 
 
 # Libraries
 ```
-pip install opencv cvzone mediapipe numpy tensorflow pyrealsense2
+pip install opencv-python cvzone mediapipe numpy tensorflow pyrealsense2
 ```
