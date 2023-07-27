@@ -1,2 +1,8 @@
 .vscode/
 python-venv/
+detection/models/
+recognition/models/
+*.pb
+*.pbtxt
+detection/output/
+recognition/output/
