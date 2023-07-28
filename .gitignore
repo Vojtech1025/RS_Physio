@@ -6,3 +6,4 @@ recognition/models/
 *.pbtxt
 detection/output/
 recognition/output/
+*.csv
