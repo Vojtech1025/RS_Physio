@@ -162,6 +162,6 @@ class Detection:
 
 if __name__ == "__main__":
     detection = Detection()
-    detection.HandDetection()
+    # detection.HandDetection()
     # detection.PoseDetection()
-    # detection.PoseHandDetection()
+    detection.PoseHandDetection()
