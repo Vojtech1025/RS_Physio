@@ -7,3 +7,5 @@ recognition/models/
 detection/output/
 recognition/output/
 *.csv
+*.avi
+*.pkl

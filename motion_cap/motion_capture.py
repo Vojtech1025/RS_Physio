@@ -27,7 +27,7 @@ class Feature(Enum):
     FACE = 2
 
 
-# global dictionary with size of 
+# global dictionary with amount of landmarks for each feature
 LANDMARKS = {
     Feature.POSE: 33,
     Feature.HAND: 21,
@@ -62,6 +62,13 @@ class MotionCapture:
         # PREPARE MEDIAPIPE
         self.mpDraw = mp.solutions.drawing_utils
 
+        # the output will be written to output.avi
+        self.out = cv2.VideoWriter(
+            'output.avi',
+            cv2.VideoWriter_fourcc(*'MJPG'),
+            15.,
+            (self.W, self.H))
+
     def GetImgs(self, color_frame, depth_frame):
         # Convert images to numpy arrays
         color_image = np.asanyarray(color_frame.get_data())
@@ -76,7 +83,7 @@ class MotionCapture:
 
         return color_frame, depth_frame
 
-    def Run(self):
+    def Run(self, recording=True):
         # This function is used to run the motion capture to detect all features chosen in the config
   
         # PREPARE MEDIAPIPE
@@ -145,6 +152,9 @@ class MotionCapture:
                 imgOut, faces = self.FindFace(imgRGB=imgRGB, imgOut=imgOut)
 
 
+            # Write the output video
+            if recording:
+                self.out.write(imgOut.astype('uint8'))
             # Display
             cv2.imshow("Image", imgOut)
             if cv2.waitKey(10) & 0xFF == ord('q'):
@@ -338,25 +348,29 @@ class MotionCapture:
 
                 
                 # 1. Draw face landmarks
-                mp_drawing.draw_landmarks(image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION, 
+                if self.feature_config[Feature.FACE]:
+                    mp_drawing.draw_landmarks(image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION, 
                                         mp_drawing.DrawingSpec(color=(80,110,10), thickness=1, circle_radius=1),
                                         mp_drawing.DrawingSpec(color=(80,256,121), thickness=1, circle_radius=1)
                                         )
                 
                 # 2. Right hand
-                mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                if self.feature_config[Feature.HAND]:
+                    mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
                                         mp_drawing.DrawingSpec(color=(80,22,10), thickness=2, circle_radius=4),
                                         mp_drawing.DrawingSpec(color=(80,44,121), thickness=2, circle_radius=2)
                                         )
 
                 # 3. Left Hand
-                mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                if self.feature_config[Feature.HAND]:
+                    mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
                                         mp_drawing.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=4),
                                         mp_drawing.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2)
                                         )
 
                 # 4. Pose Detections
-                mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS, 
+                if self.feature_config[Feature.POSE]:
+                    mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS, 
                                         mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=4),
                                         mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
                                         )
@@ -486,25 +500,29 @@ class MotionCapture:
 
 
                 # 1. Draw face landmarks
-                mp_drawing.draw_landmarks(image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION, 
+                if self.feature_config[Feature.FACE]:
+                    mp_drawing.draw_landmarks(image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION, 
                                         mp_drawing.DrawingSpec(color=(80,110,10), thickness=1, circle_radius=1),
                                         mp_drawing.DrawingSpec(color=(80,256,121), thickness=1, circle_radius=1)
                                         )
                 
                 # 2. Right hand
-                mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                if self.feature_config[Feature.HAND]:
+                    mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
                                         mp_drawing.DrawingSpec(color=(80,22,10), thickness=2, circle_radius=4),
                                         mp_drawing.DrawingSpec(color=(80,44,121), thickness=2, circle_radius=2)
                                         )
 
                 # 3. Left Hand
-                mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                if self.feature_config[Feature.HAND]:
+                    mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
                                         mp_drawing.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=4),
                                         mp_drawing.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2)
                                         )
 
                 # 4. Pose Detections
-                mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS, 
+                if self.feature_config[Feature.POSE]:
+                    mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS, 
                                         mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=4),
                                         mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
                                         )

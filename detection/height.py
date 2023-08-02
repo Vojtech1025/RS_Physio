@@ -20,7 +20,7 @@ point_cloud = rs.pointcloud()
 
 print("[INFO] loading model...")
 # download model from: https://github.com/opencv/opencv/wiki/TensorFlow-Object-Detection-API#run-network-in-opencv
-net = cv2.dnn.readNetFromTensorflow("detection/faster_rcnn/frozen_inference_graph.pb", "detection/faster_rcnn_inception_v2.pbtxt")
+net = cv2.dnn.readNetFromTensorflow("detection/models/faster_rcnn/frozen_inference_graph.pb", "detection/models/faster_rcnn_inception_v2.pbtxt")
 while True:
     frames = pipeline.wait_for_frames()
     frames = aligned_stream.process(frames)
