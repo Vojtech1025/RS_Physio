@@ -9,3 +9,4 @@ recognition/output/
 *.csv
 *.avi
 *.pkl
+*.png

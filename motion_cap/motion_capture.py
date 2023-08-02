@@ -130,7 +130,7 @@ class MotionCapture:
 
                             for ld in landmarks:
                                 # put idx number to each landmark
-                                cv2.putText(imgOut, "[" + str(ld[0]) + ", " + str(ld[0]) + "]", (ld[0]+5, ld[1]+5), cv2.FONT_HERSHEY_PLAIN, 0.7, (255, 0, 0), 1)
+                                cv2.putText(imgOut, "[" + str(ld[0]) + ", " + str(ld[1]) + "]", (ld[0]+5, ld[1]+5), cv2.FONT_HERSHEY_PLAIN, 0.7, (255, 0, 0), 1)
 
                             if landmarks:
                                 # We need to check if the landmark is out of the image
@@ -262,7 +262,7 @@ class MotionCapture:
         return imgOut, faces
 
 
-
+    # Simple Train Linear model.
     def RecordBodyMotion(self, class_name:str, at_first = False):
         num_coords = 0
 
@@ -538,10 +538,109 @@ class MotionCapture:
 
 
 
+class Benchmark:
+    def __init__(self, feature_config={Feature.HAND:True}):
+        self.feature_config = feature_config
+
+        self.pipeline_D435 = rs.pipeline()
+        self.config_D435 = rs.config()
+        self.config_D435.enable_device('215322075176')
+        self.config_D435.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        self.config_D435.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+
+        self.pipeline_L515 = rs.pipeline()
+        self.config_L515 = rs.config()
+        self.config_L515.enable_device('f1382219')
+        self.config_L515.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        self.config_L515.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+
+    def PutText(self, data:dict, imgOut, depth_frame):
+        if data:
+            thumb = 4 # index of thumb in lmList
+            for hand in data:
+                if hand:
+                    landmarks = hand["lmList"]  # List of 21 Landmark points
+
+                    for ld in landmarks:
+                        # put idx number to each landmark
+                        cv2.putText(imgOut, "[" + str(ld[0]) + ", " + str(ld[1]) + "]", (ld[0]+5, ld[1]+5), cv2.FONT_HERSHEY_PLAIN, 0.7, (255, 0, 0), 1)
+
+                    if landmarks:
+                        # We need to check if the landmark is out of the image
+                        thumb_x = landmarks[thumb][0]
+                        thumb_y = landmarks[thumb][1]
+                        if thumb_x >= 0 and thumb_x < self.W and thumb_y >= 0 and thumb_y < self.H:
+                            # print(self.W, "x", self.H , " ", landmarks[thumb] , " - ", thumb_x, " ", thumb_y ,flush=True)
+                            depth = rs.depth_frame.get_distance(depth_frame, thumb_x, thumb_y)
+                            cv2.putText(imgOut, str(depth) + " m", (landmarks[thumb][0]+10, landmarks[thumb][1]+10), cv2.FONT_HERSHEY_PLAIN, 0.7, (0, 255, 0), 1)
+
+    def Run(self):
+        # Start streaming from both cameras
+        self.pipeline_D435.start(self.config_D435)
+        self.pipeline_L515.start(self.config_L515)
+
+
+        while True:
+            if self.feature_config[Feature.HAND]:
+                self.mpHands = mp.solutions.hands
+                self.hands = self.mpHands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+
+            # Camera L515
+            # Wait for a coherent pair of frames: depth and color
+            framesL515 = self.pipeline_L515.wait_for_frames()
+            depth_frame = framesL515.get_depth_frame()
+            color_frame = framesL515.get_color_frame()
+            if not depth_frame or not color_frame:
+                continue
+            # Convert images to numpy arrays
+            depth_image_1 = np.asanyarray(depth_frame.get_data())
+            color_image_1 = np.asanyarray(color_frame.get_data())
+            # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
+            depth_colormap_1 = cv2.applyColorMap(cv2.convertScaleAbs(depth_image_1, alpha=0.5), cv2.COLORMAP_JET)
+
+            # Camera 2
+            # Wait for a coherent pair of frames: depth and color
+            framesD435 = self.pipeline_D435.wait_for_frames()
+            depth_frame = framesD435.get_depth_frame()
+            color_frame = framesD435.get_color_frame()
+            if not depth_frame or not color_frame:
+                continue
+            # Convert images to numpy arrays
+            depth_image_2 = np.asanyarray(depth_frame.get_data())
+            color_image_2 = np.asanyarray(color_frame.get_data())
+            # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
+            depth_colormap_2 = cv2.applyColorMap(cv2.convertScaleAbs(depth_image_2, alpha=0.5), cv2.COLORMAP_JET)
+
+            # Stack all images horizontally
+            images = np.hstack((color_image_1, depth_colormap_1, color_image_2, depth_colormap_2))
+
+            # Show images from both cameras
+            cv2.imshow('L515', depth_image_1)
+            cv2.imshow('D435', depth_image_2)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+            # Detect HANDS
+            # if self.feature_config[Feature.HAND]:
+            #     # Find the hand and its landmarks
+            #     hands, imgOut_A = self.FindHands(imgRGB=self.imgRGB_A, imgOut=imgOut_A)
+            #     hands, imgOut_B = self.FindHands(imgRGB=self.imgRGB_B, imgOut=imgOut_B)
+
+        self.pipeline_D435.stop()
+        self.pipeline_L515.stop()
+        cv2.destroyAllWindows()
+
+
+
+
 if __name__ == "__main__":
     capture = MotionCapture(feature_config={Feature.HAND:True, Feature.POSE:False, Feature.FACE:False})
     # capture.Run()
 
     # capture.RecordBodyMotion("Fingers stretched", at_first=False)
     # capture.TrainBody()
-    capture.TestBody()
+    # capture.TestBody()
+
+    benchmark = Benchmark()
+    benchmark.Run()
+
