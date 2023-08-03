@@ -539,20 +539,125 @@ class MotionCapture:
 
 
 class Benchmark:
-    def __init__(self, feature_config={Feature.HAND:True}):
+    def __init__(self, feature_config={Feature.HAND:True}, width=640, height=480, fps=30):
         self.feature_config = feature_config
+        self.W = width
+        self.H = height
+        self.FPS = fps
+
+        # PREPARE MEDIAPIPE
+        self.mpDraw = mp.solutions.drawing_utils
 
         self.pipeline_D435 = rs.pipeline()
         self.config_D435 = rs.config()
         self.config_D435.enable_device('215322075176')
-        self.config_D435.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-        self.config_D435.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        self.config_D435.enable_stream(rs.stream.depth, self.W, self.H, rs.format.z16, self.FPS)
+        self.config_D435.enable_stream(rs.stream.color, self.W, self.H, rs.format.bgr8, self.FPS)
 
         self.pipeline_L515 = rs.pipeline()
         self.config_L515 = rs.config()
         self.config_L515.enable_device('f1382219')
-        self.config_L515.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-        self.config_L515.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        self.config_L515.enable_stream(rs.stream.depth, self.W, self.H, rs.format.z16, self.FPS)
+        self.config_L515.enable_stream(rs.stream.color, self.W, self.H, rs.format.bgr8, self.FPS)
+
+    def FindHands(self, imgRGB, imgOut, draw=True, flipType=True):
+        """
+        Finds hands in a BGR image.
+        :param img: Image to find the hands in.
+        :param draw: Flag to draw the output on the image.
+        :return: Image with or without drawings
+        """
+        self.results = self.hands.process(imgRGB)
+        allHands = []
+        h, w, c = imgRGB.shape
+        if self.results.multi_hand_landmarks:
+            for handType, handLms in zip(self.results.multi_handedness, self.results.multi_hand_landmarks):
+                myHand = {}
+                ## lmList
+                mylmList = []
+                xList = []
+                yList = []
+                for id, lm in enumerate(handLms.landmark):
+                    px, py, pz = int(lm.x * w), int(lm.y * h), int(lm.z * w)
+                    mylmList.append([px, py, pz])
+                    xList.append(px)
+                    yList.append(py)
+                    # put idx number to each landmark
+                    # cv2.putText(img, "[" + str(px) + ", " + str(py) + "]", (px+5, py+5), cv2.FONT_HERSHEY_PLAIN, 0.7, (255, 0, 0), 1)
+
+                ## bbox
+                xmin, xmax = min(xList), max(xList)
+                ymin, ymax = min(yList), max(yList)
+                boxW, boxH = xmax - xmin, ymax - ymin
+                bbox = xmin, ymin, boxW, boxH
+                cx, cy = bbox[0] + (bbox[2] // 2), \
+                         bbox[1] + (bbox[3] // 2)
+
+                myHand["lmList"] = mylmList
+                myHand["bbox"] = bbox
+                myHand["center"] = (cx, cy)
+
+                if flipType:
+                    if handType.classification[0].label == "Right":
+                        myHand["type"] = "Left"
+                    else:
+                        myHand["type"] = "Right"
+                else:
+                    myHand["type"] = handType.classification[0].label
+                allHands.append(myHand)
+
+                ## draw
+                if draw:
+                    self.mpDraw.draw_landmarks(imgOut, handLms,
+                                               self.mpHands.HAND_CONNECTIONS)
+                    cv2.rectangle(imgOut, (bbox[0] - 20, bbox[1] - 20),
+                                  (bbox[0] + bbox[2] + 20, bbox[1] + bbox[3] + 20),
+                                  (255, 0, 255), 2)
+                    cv2.putText(imgOut, myHand["type"], (bbox[0] - 30, bbox[1] - 30), cv2.FONT_HERSHEY_PLAIN,
+                                2, (255, 0, 255), 2)
+        if draw:
+            return allHands, imgOut
+        else:
+            return allHands
+
+    def FindPose(self, imgRGB, imgOut, draw=True):
+        """
+        Finds the pose of the object in the image.
+        :param img: Image to find the pose in.
+        :param draw: Flag to draw the output on the image.
+        :return: Image with or without drawings
+        """
+        self.results = self.pose.process(imgRGB)
+        if self.results.pose_landmarks:
+            if draw:
+                self.mpDraw.draw_landmarks(imgOut, self.results.pose_landmarks,
+                                           self.mpPose.POSE_CONNECTIONS)
+        return imgOut
+
+    def FindFace(self, imgRGB, imgOut, draw=True):
+        """
+        Finds the face in the image.
+        :param img: Image to find the face in.
+        :param draw: Flag to draw the output on the image.
+        :return: Image with or without drawings
+        """
+        self.results = self.faceMesh.process(imgRGB)
+        faces = []
+
+        drawSpec = self.mpDraw.DrawingSpec(thickness=1, circle_radius=2)
+
+        if self.results.multi_face_landmarks:
+            for faceLms in self.results.multi_face_landmarks:
+                if draw:
+                    self.mpDraw.draw_landmarks(imgOut, faceLms, self.mpFaceMesh.FACEMESH_CONTOURS, drawSpec, drawSpec)
+                face = []
+                for id, lm in enumerate(faceLms.landmark):
+                    ih, iw, ic = imgOut.shape
+                    x, y = int(lm.x * iw), int(lm.y * ih)
+                    face.append([x, y])
+                faces.append(face)
+        return imgOut, faces
+
 
     def PutText(self, data:dict, imgOut, depth_frame):
         if data:
@@ -579,12 +684,11 @@ class Benchmark:
         self.pipeline_D435.start(self.config_D435)
         self.pipeline_L515.start(self.config_L515)
 
+        if self.feature_config[Feature.HAND]:
+            self.mpHands = mp.solutions.hands
+            self.hands = self.mpHands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
         while True:
-            if self.feature_config[Feature.HAND]:
-                self.mpHands = mp.solutions.hands
-                self.hands = self.mpHands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5, min_tracking_confidence=0.5)
-
             # Camera L515
             # Wait for a coherent pair of frames: depth and color
             framesL515 = self.pipeline_L515.wait_for_frames()
@@ -597,6 +701,10 @@ class Benchmark:
             color_image_1 = np.asanyarray(color_frame.get_data())
             # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
             depth_colormap_1 = cv2.applyColorMap(cv2.convertScaleAbs(depth_image_1, alpha=0.5), cv2.COLORMAP_JET)
+
+            if self.feature_config[Feature.HAND]:
+                hands, color_image_1 = self.FindHands(color_image_1, color_image_1, draw=True)
+                self.PutText(hands, color_image_1, depth_frame)
 
             # Camera 2
             # Wait for a coherent pair of frames: depth and color
@@ -614,9 +722,14 @@ class Benchmark:
             # Stack all images horizontally
             images = np.hstack((color_image_1, depth_colormap_1, color_image_2, depth_colormap_2))
 
+            if self.feature_config[Feature.HAND]:
+                hands, color_image_2 = self.FindHands(color_image_2, color_image_2, draw=True)
+                self.PutText(hands, color_image_2, depth_frame)
+
+
             # Show images from both cameras
-            cv2.imshow('L515', depth_image_1)
-            cv2.imshow('D435', depth_image_2)
+            cv2.imshow('L515', color_image_1)
+            cv2.imshow('D435', color_image_2)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
