@@ -679,10 +679,12 @@ class Benchmark:
                             depth = rs.depth_frame.get_distance(depth_frame, thumb_x, thumb_y)
                             cv2.putText(imgOut, str(depth) + " m", (landmarks[thumb][0]+10, landmarks[thumb][1]+10), cv2.FONT_HERSHEY_PLAIN, 0.7, (0, 255, 0), 1)
 
-    def Run(self):
+    def Run(self, deviceL515=True, deviceD435=False):
         # Start streaming from both cameras
-        self.pipeline_D435.start(self.config_D435)
-        self.pipeline_L515.start(self.config_L515)
+        if deviceD435:
+            self.pipeline_D435.start(self.config_D435)
+        if deviceL515:
+            self.pipeline_L515.start(self.config_L515)
 
         if self.feature_config[Feature.HAND]:
             self.mpHands = mp.solutions.hands
@@ -690,54 +692,51 @@ class Benchmark:
 
         while True:
             # Camera L515
-            # Wait for a coherent pair of frames: depth and color
-            framesL515 = self.pipeline_L515.wait_for_frames()
-            depth_frame = framesL515.get_depth_frame()
-            color_frame = framesL515.get_color_frame()
-            if not depth_frame or not color_frame:
-                continue
-            # Convert images to numpy arrays
-            depth_image_1 = np.asanyarray(depth_frame.get_data())
-            color_image_1 = np.asanyarray(color_frame.get_data())
-            # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
-            depth_colormap_1 = cv2.applyColorMap(cv2.convertScaleAbs(depth_image_1, alpha=0.5), cv2.COLORMAP_JET)
+            if deviceL515:
+                # Wait for a coherent pair of frames: depth and color
+                framesL515 = self.pipeline_L515.wait_for_frames()
+                depth_frame = framesL515.get_depth_frame()
+                color_frame = framesL515.get_color_frame()
+                if not depth_frame or not color_frame:
+                    continue
+                # Convert images to numpy arrays
+                depth_image = np.asanyarray(depth_frame.get_data())
+                color_image = np.asanyarray(color_frame.get_data())
+                depth_image = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.5), cv2.COLORMAP_JET)
 
-            if self.feature_config[Feature.HAND]:
-                hands, color_image_1 = self.FindHands(color_image_1, color_image_1, draw=True)
-                self.PutText(hands, color_image_1, depth_frame)
+                if self.feature_config[Feature.HAND]:
+                    hands, depth_image = self.FindHands(color_image, depth_image, draw=True)
+                    hands, color_image = self.FindHands(color_image, color_image, draw=True)
+                    # self.PutText(hands, color_image_1, depth_frame)
+                
+                # Display
+                cv2.imshow('L515_color', color_image)
+                cv2.imshow('L515_depth', depth_image)
 
-            # Camera 2
-            # Wait for a coherent pair of frames: depth and color
-            framesD435 = self.pipeline_D435.wait_for_frames()
-            depth_frame = framesD435.get_depth_frame()
-            color_frame = framesD435.get_color_frame()
-            if not depth_frame or not color_frame:
-                continue
-            # Convert images to numpy arrays
-            depth_image_2 = np.asanyarray(depth_frame.get_data())
-            color_image_2 = np.asanyarray(color_frame.get_data())
-            # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
-            depth_colormap_2 = cv2.applyColorMap(cv2.convertScaleAbs(depth_image_2, alpha=0.5), cv2.COLORMAP_JET)
+            # Camera D435
+            if deviceD435:
+                # Wait for a coherent pair of frames: depth and color
+                framesD435 = self.pipeline_D435.wait_for_frames()
+                depth_frame = framesD435.get_depth_frame()
+                color_frame = framesD435.get_color_frame()
+                if not depth_frame or not color_frame:
+                    continue
+                # Convert images to numpy arrays
+                depth_image_2 = np.asanyarray(depth_frame.get_data())
+                color_image_2 = np.asanyarray(color_frame.get_data())
+                # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
+                depth_colormap_2 = cv2.applyColorMap(cv2.convertScaleAbs(depth_image_2, alpha=0.5), cv2.COLORMAP_JET)
 
-            # Stack all images horizontally
-            images = np.hstack((color_image_1, depth_colormap_1, color_image_2, depth_colormap_2))
+                if self.feature_config[Feature.HAND]:
+                    hands, color_image_2 = self.FindHands(color_image_2, color_image_2, draw=True)
+                    # self.PutText(hands, color_image_2, depth_frame)
 
-            if self.feature_config[Feature.HAND]:
-                hands, color_image_2 = self.FindHands(color_image_2, color_image_2, draw=True)
-                self.PutText(hands, color_image_2, depth_frame)
+                # Display
+                cv2.imshow('D435', color_image_2)
 
 
-            # Show images from both cameras
-            cv2.imshow('L515', color_image_1)
-            cv2.imshow('D435', color_image_2)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-
-            # Detect HANDS
-            # if self.feature_config[Feature.HAND]:
-            #     # Find the hand and its landmarks
-            #     hands, imgOut_A = self.FindHands(imgRGB=self.imgRGB_A, imgOut=imgOut_A)
-            #     hands, imgOut_B = self.FindHands(imgRGB=self.imgRGB_B, imgOut=imgOut_B)
 
         self.pipeline_D435.stop()
         self.pipeline_L515.stop()
