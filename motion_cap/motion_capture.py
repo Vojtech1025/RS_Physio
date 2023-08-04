@@ -13,6 +13,8 @@ from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.metrics import accuracy_score # Accuracy metrics 
 import pickle 
+from mpl_toolkits import mplot3d
+import matplotlib.pyplot as plt
 
 
 
@@ -37,6 +39,9 @@ LANDMARKS = {
 
 class MotionCapture:
     def __init__(self, stream_config={StreamConfig.COLOR:True, StreamConfig.DEPTH:True}, feature_config={Feature.HAND:True}, width=640, height=480, fps=30):
+        align_to = rs.stream.depth
+        self.align = rs.align(align_to)
+        
         self.stream_config = stream_config
         self.feature_config = feature_config
         self.W = width
@@ -78,8 +83,10 @@ class MotionCapture:
 
     def GetFrames(self):
         frames = self.pipeline.wait_for_frames()
-        color_frame = frames.get_color_frame()
-        depth_frame = frames.get_depth_frame()
+        # Aligning images to RGB image (it is smaller than the depth one)
+        aligned_frames =  self.align.process(frames)
+        color_frame = aligned_frames.get_color_frame()
+        depth_frame = aligned_frames.get_depth_frame()
 
         return color_frame, depth_frame
 
@@ -117,6 +124,9 @@ class MotionCapture:
             cv2.putText(imgOut, "[20, 60]", (20, 60), cv2.FONT_HERSHEY_PLAIN, 0.7, (255, 0, 0), 1)
             cv2.putText(imgOut, "[20, 20]", (20, 20), cv2.FONT_HERSHEY_PLAIN, 0.7, (255, 0, 0), 1)
 
+            # Getting intrinsics of camera
+            depth_intrin = depth_frame.profile.as_video_stream_profile().intrinsics
+            landmark_coords = [[], [], []]
             # Detect HANDS
             if self.feature_config[Feature.HAND]:
                 # Find the hand and its landmarks
@@ -131,7 +141,11 @@ class MotionCapture:
                             for ld in landmarks:
                                 # put idx number to each landmark
                                 cv2.putText(imgOut, "[" + str(ld[0]) + ", " + str(ld[1]) + "]", (ld[0]+5, ld[1]+5), cv2.FONT_HERSHEY_PLAIN, 0.7, (255, 0, 0), 1)
-
+                                depth = depth_frame.get_distance(ld[0], ld[1])
+                                dx ,dy, dz = rs.rs2_deproject_pixel_to_point(depth_intrin, [ld[0],ld[1]], depth)
+                                landmark_coords[0].append(dx)
+                                landmark_coords[1].append(dy)
+                                landmark_coords[2].append(dz)
                             if landmarks:
                                 # We need to check if the landmark is out of the image
                                 thumb_x = landmarks[thumb][0]
@@ -155,10 +169,34 @@ class MotionCapture:
             # Write the output video
             if recording:
                 self.out.write(imgOut.astype('uint8'))
+            # Show graph
+            # Creating figure
+            fig = plt.figure(figsize = (10, 7))
+            ax = plt.axes(projection ="3d")
+            ax.set_xlim3d(-1, 1)
+            ax.set_ylim3d(-1, 1)
+            ax.set_zlim3d(0, 1)
+            # Creating plot
+            ax.scatter3D(landmark_coords[0], landmark_coords[1], landmark_coords[2], color = "green")
+            if len(landmark_coords[0]) > 0:
+                ax.plot([landmark_coords[0][0], landmark_coords[0][4]], [landmark_coords[1][0], landmark_coords[1][4]], [landmark_coords[2][0], landmark_coords[2][4]], "r--")
+                ax.plot([landmark_coords[0][0], landmark_coords[0][8]], [landmark_coords[1][0], landmark_coords[1][8]], [landmark_coords[2][0], landmark_coords[2][8]], "r--")
+                ax.plot([landmark_coords[0][0], landmark_coords[0][12]], [landmark_coords[1][0], landmark_coords[1][12]], [landmark_coords[2][0], landmark_coords[2][12]], "r--")
+                ax.plot([landmark_coords[0][0], landmark_coords[0][16]], [landmark_coords[1][0], landmark_coords[1][16]], [landmark_coords[2][0], landmark_coords[2][16]], "r--")
+                ax.plot([landmark_coords[0][0], landmark_coords[0][20]], [landmark_coords[1][0], landmark_coords[1][20]], [landmark_coords[2][0], landmark_coords[2][20]], "r--")
+
+            plt.title("simple 3D scatter plot")
+            ax.set_xlabel('X-axis', fontweight ='bold')
+            ax.set_ylabel('Y-axis', fontweight ='bold')
+            ax.set_zlabel('Z-axis', fontweight ='bold')
             # Display
             cv2.imshow("Image", imgOut)
             if cv2.waitKey(10) & 0xFF == ord('q'):
                 break
+            # show plot
+            ax.view_init(90, 90)
+            
+            plt.show()
 
         cv2.destroyAllWindows()
         self.pipeline.stop()
@@ -697,18 +735,6 @@ class Benchmark:
         while True:
             # Camera L515
             if deviceL515:
-                # # Wait for a coherent pair of frames: depth and color
-                # framesL515 = self.pipeline_L515.wait_for_frames()
-                # depth_frame = framesL515.get_depth_frame()
-                # color_frame = framesL515.get_color_frame()
-                # if not depth_frame or not color_frame:
-                #     continue
-                # # Convert images to numpy arrays
-                # depth_image = np.asanyarray(depth_frame.get_data())
-                # color_image = np.asanyarray(color_frame.get_data())
-                # depth_image = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.5), cv2.COLORMAP_JET)
-
-
                 # This call waits until a new coherent set of frames is available on a device
                 framesL515 = self.pipeline_L515.wait_for_frames()
                 
@@ -737,24 +763,6 @@ class Benchmark:
 
             # Camera D435
             if deviceD435:
-                # Wait for a coherent pair of frames: depth and color
-                # framesD435 = self.pipeline_D435.wait_for_frames()
-                # depth_frame = framesD435.get_depth_frame()
-                # color_frame = framesD435.get_color_frame()
-                # if not depth_frame or not color_frame:
-                #     continue
-                # # Convert images to numpy arrays
-                # depth_image_2 = np.asanyarray(depth_frame.get_data())
-                # color_image_2 = np.asanyarray(color_frame.get_data())
-                # # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
-                # depth_image_2 = cv2.applyColorMap(cv2.convertScaleAbs(depth_image_2, alpha=0.5), cv2.COLORMAP_JET)
-
-                # if self.feature_config[Feature.HAND]:
-                #     hands, depth_image_2 = self.FindHands(color_image_2, depth_image_2, draw=True)
-                #     hands, color_image_2 = self.FindHands(color_image_2, color_image_2, draw=True)
-                #     self.PutText(hands, color_image_2, depth_frame)
-
-
                 # This call waits until a new coherent set of frames is available on a device
                 framesD435 = self.pipeline_D435.wait_for_frames()
                 
@@ -792,12 +800,12 @@ class Benchmark:
 
 if __name__ == "__main__":
     capture = MotionCapture(feature_config={Feature.HAND:True, Feature.POSE:False, Feature.FACE:False})
-    # capture.Run()
+    capture.Run()
 
     # capture.RecordBodyMotion("Fingers stretched", at_first=False)
     # capture.TrainBody()
     # capture.TestBody()
 
-    benchmark = Benchmark()
-    benchmark.Run()
+    # benchmark = Benchmark()
+    # benchmark.Run()
 
