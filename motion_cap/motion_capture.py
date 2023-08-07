@@ -83,21 +83,21 @@ class MotionCapture:
 
         return color_frame, depth_frame
 
-    def Run(self, recording=True):
+    def Run(self, recording=False):
         # This function is used to run the motion capture to detect all features chosen in the config
   
         # PREPARE MEDIAPIPE
         if self.feature_config[Feature.HAND]:
             self.mpHands = mp.solutions.hands
-            self.hands = self.mpHands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+            self.hands = self.mpHands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=1)
 
         if self.feature_config[Feature.POSE]:
             self.mpPose = mp.solutions.pose
-            self.pose = self.mpPose.Pose(static_image_mode=False, smooth_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+            self.pose = self.mpPose.Pose(static_image_mode=False, smooth_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=0)
 
         if self.feature_config[Feature.FACE]:
             self.mpFaceMesh = mp.solutions.face_mesh
-            self.faceMesh = self.mpFaceMesh.FaceMesh(static_image_mode=False, max_num_faces=2, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+            self.faceMesh = self.mpFaceMesh.FaceMesh(static_image_mode=False, max_num_faces=1, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
         # CAPTURE LOOP
         while True:
@@ -122,25 +122,6 @@ class MotionCapture:
                 # Find the hand and its landmarks
                 hands, imgOut = self.FindHands(imgRGB=imgRGB, imgOut=imgOut)
 
-                if hands:
-                    thumb = 4 # index of thumb in lmList
-                    for hand in hands:
-                        if hand:
-                            landmarks = hand["lmList"]  # List of 21 Landmark points
-
-                            for ld in landmarks:
-                                # put idx number to each landmark
-                                cv2.putText(imgOut, "[" + str(ld[0]) + ", " + str(ld[1]) + "]", (ld[0]+5, ld[1]+5), cv2.FONT_HERSHEY_PLAIN, 0.7, (255, 0, 0), 1)
-
-                            if landmarks:
-                                # We need to check if the landmark is out of the image
-                                thumb_x = landmarks[thumb][0]
-                                thumb_y = landmarks[thumb][1]
-                                if thumb_x >= 0 and thumb_x < self.W and thumb_y >= 0 and thumb_y < self.H:
-                                    # print(self.W, "x", self.H , " ", landmarks[thumb] , " - ", thumb_x, " ", thumb_y ,flush=True)
-                                    depth = rs.depth_frame.get_distance(depth_frame, thumb_x, thumb_y)
-                                    cv2.putText(imgOut, str(depth) + " m", (landmarks[thumb][0]+10, landmarks[thumb][1]+10), cv2.FONT_HERSHEY_PLAIN, 0.7, (0, 255, 0), 1)
-
             # Detect POSE
             if self.feature_config[Feature.POSE]:
                 # Find the pose and its landmarks
@@ -150,7 +131,6 @@ class MotionCapture:
             if self.feature_config[Feature.FACE]:
                 # Find the face and its landmarks
                 imgOut, faces = self.FindFace(imgRGB=imgRGB, imgOut=imgOut)
-
 
             # Write the output video
             if recording:
@@ -528,6 +508,7 @@ class MotionCapture:
                                         )
                                 
                 cv2.imshow('Raw Webcam Feed', image)
+                self.out.write(image.astype('uint8'))
 
                 if cv2.waitKey(10) & 0xFF == ord('q'):
                     break
@@ -697,18 +678,6 @@ class Benchmark:
         while True:
             # Camera L515
             if deviceL515:
-                # # Wait for a coherent pair of frames: depth and color
-                # framesL515 = self.pipeline_L515.wait_for_frames()
-                # depth_frame = framesL515.get_depth_frame()
-                # color_frame = framesL515.get_color_frame()
-                # if not depth_frame or not color_frame:
-                #     continue
-                # # Convert images to numpy arrays
-                # depth_image = np.asanyarray(depth_frame.get_data())
-                # color_image = np.asanyarray(color_frame.get_data())
-                # depth_image = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.5), cv2.COLORMAP_JET)
-
-
                 # This call waits until a new coherent set of frames is available on a device
                 framesL515 = self.pipeline_L515.wait_for_frames()
                 
@@ -718,14 +687,11 @@ class Benchmark:
                 aligned_color_frame = aligned_frames.get_color_frame()
 
                 if not depth_frame or not aligned_color_frame: continue
-
                 
                 depth_color_frame = rs.colorizer().colorize(depth_frame)
                 depth_image = np.asanyarray(depth_color_frame.get_data())
                 color_image = np.asanyarray(aligned_color_frame.get_data())
                 
-                # depth_image = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.5), cv2.COLORMAP_JET)
-
                 if self.feature_config[Feature.HAND]:
                     hands, depth_image = self.FindHands(color_image, depth_image, draw=True)
                     hands, color_image = self.FindHands(color_image, color_image, draw=True)
@@ -737,24 +703,6 @@ class Benchmark:
 
             # Camera D435
             if deviceD435:
-                # Wait for a coherent pair of frames: depth and color
-                # framesD435 = self.pipeline_D435.wait_for_frames()
-                # depth_frame = framesD435.get_depth_frame()
-                # color_frame = framesD435.get_color_frame()
-                # if not depth_frame or not color_frame:
-                #     continue
-                # # Convert images to numpy arrays
-                # depth_image_2 = np.asanyarray(depth_frame.get_data())
-                # color_image_2 = np.asanyarray(color_frame.get_data())
-                # # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
-                # depth_image_2 = cv2.applyColorMap(cv2.convertScaleAbs(depth_image_2, alpha=0.5), cv2.COLORMAP_JET)
-
-                # if self.feature_config[Feature.HAND]:
-                #     hands, depth_image_2 = self.FindHands(color_image_2, depth_image_2, draw=True)
-                #     hands, color_image_2 = self.FindHands(color_image_2, color_image_2, draw=True)
-                #     self.PutText(hands, color_image_2, depth_frame)
-
-
                 # This call waits until a new coherent set of frames is available on a device
                 framesD435 = self.pipeline_D435.wait_for_frames()
                 
@@ -766,18 +714,17 @@ class Benchmark:
                 if not depth_frame or not aligned_color_frame: continue
 
                 depth_color_frame = rs.colorizer().colorize(depth_frame)
-                depth_image_2 = np.asanyarray(depth_color_frame.get_data())
-                color_image_2 = np.asanyarray(aligned_color_frame.get_data())
-                # depth_image_2 = cv2.applyColorMap(cv2.convertScaleAbs(depth_image_2, alpha=0.5), cv2.COLORMAP_JET)
+                depth_image = np.asanyarray(depth_color_frame.get_data())
+                color_image = np.asanyarray(aligned_color_frame.get_data())
 
                 if self.feature_config[Feature.HAND]:
-                    hands, depth_image_2 = self.FindHands(color_image_2, depth_image_2, draw=True)
-                    hands, color_image_2 = self.FindHands(color_image_2, color_image_2, draw=True)
-                    self.PutText(hands, color_image_2, depth_frame)
+                    hands, depth_image = self.FindHands(color_image, depth_image, draw=True)
+                    hands, color_image = self.FindHands(color_image, color_image, draw=True)
+                    self.PutText(hands, color_image, depth_frame)
 
                 # Display
-                cv2.imshow('D435 color', color_image_2)
-                cv2.imshow('D435 depth', depth_image_2)
+                cv2.imshow('D435_color', color_image)
+                cv2.imshow('D435_depth', depth_image)
 
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -792,12 +739,12 @@ class Benchmark:
 
 if __name__ == "__main__":
     capture = MotionCapture(feature_config={Feature.HAND:True, Feature.POSE:False, Feature.FACE:False})
-    # capture.Run()
+    capture.Run()
 
-    # capture.RecordBodyMotion("Fingers stretched", at_first=False)
+    # capture.RecordBodyMotion("Arms Up", at_first=False)
     # capture.TrainBody()
     # capture.TestBody()
 
-    benchmark = Benchmark()
-    benchmark.Run()
+    # benchmark = Benchmark()
+    # benchmark.Run(deviceL515=True, deviceD435=False)
 
